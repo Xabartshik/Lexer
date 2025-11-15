@@ -13,7 +13,6 @@ public sealed class SyntaxAnalyzer
     private readonly LanguageProfile _profile;
     private Token _lookahead;
 
-    // флаг восстановления после ошибки
     private bool _inErrorRecovery = false;
 
     public List<(int Line, int Col, string Message)> Errors { get; } = new();
@@ -131,7 +130,7 @@ public sealed class SyntaxAnalyzer
             return null;
         }
 
-        var idTok = Consume(); // Identifier
+        var idTok = Consume();
 
         if (!Is(TokenType.AssignColonEq))
         {
@@ -241,17 +240,15 @@ public sealed class SyntaxAnalyzer
 
         while (_lookahead.Type != TokenType.EndOfFile)
         {
-            // препроцессор
             if (_lookahead.Type == TokenType.Preprocessor)
             {
                 Consume();
                 continue;
             }
 
-            // using namespace std;
             if (Is(TokenType.Keyword, "using"))
             {
-                Consume(); // using
+                Consume();
                 while (_lookahead.Type != TokenType.Semicolon &&
                        _lookahead.Type != TokenType.EndOfFile)
                 {
@@ -263,6 +260,13 @@ public sealed class SyntaxAnalyzer
             }
 
             if (_lookahead.Type == TokenType.Semicolon)
+            {
+                Consume();
+                continue;
+            }
+
+            // ключевой момент: если встретили }, это ошибка на верхнем уровне - пропускаем
+            if (_lookahead.Type == TokenType.RBrace)
             {
                 Consume();
                 continue;
@@ -283,36 +287,36 @@ public sealed class SyntaxAnalyzer
         return new ProgramNode(stmts);
     }
 
-    /// <summary>
-    /// На верхнем уровне: либо функция, либо объявление, либо оператор.
-    /// </summary>
     private AstNode? ParseCppStatementOrFunction()
     {
         if (IsCppType(_lookahead))
         {
-            var typeTok = Consume(); // int/void/...
+            var typeTok = Consume();
 
+            // поддержка шаблонных типов
+            SkipCppTemplateArguments();
+
+            // КЛЮЧЕВОЙ ФИ ИСПРАВЛЕНИЕ: проверяем, есть ли вообще идентификатор
             if (_lookahead.Type != TokenType.Identifier)
             {
-                Errors.Add((_lookahead.Line, _lookahead.Column,
-                    $"Ожидался идентификатор после типа '{typeTok.Lexeme}'."));
-                SkipToSemicolon();
+                // если нет идентификатора, это может быть:
+                // 1. конец блока }
+                // 2. конец файла
+                // 3. ; на верхнем уровне
+                // просто пропускаем и возвращаем null
                 return null;
             }
 
-            var nameTok = Consume(); // main/x/...
+            var nameTok = Consume();
 
             if (Is(TokenType.LParen))
             {
-                // это определение/прототип функции
                 return ParseCppFunctionDeclaration(typeTok, nameTok);
             }
 
-            // иначе это глобальное объявление переменной
             return ParseCppVarDeclTail(typeTok, nameTok);
         }
 
-        // иначе - обычный оператор
         return ParseCppStatement();
     }
 
@@ -320,19 +324,50 @@ public sealed class SyntaxAnalyzer
 
     private bool IsCppType(Token tok)
     {
-        if (tok.Type != TokenType.Keyword) return false;
-        string[] types =
+        if (tok.Type == TokenType.Keyword)
         {
-            "int", "float", "double", "char", "bool", "void",
-            "long", "short", "unsigned", "signed", "auto"
-        };
-        return Array.Exists(types, t => t == tok.Lexeme);
+            string[] types =
+            {
+                "int", "float", "double", "char", "bool", "void",
+                "long", "short", "unsigned", "signed", "auto"
+            };
+            if (Array.Exists(types, t => t == tok.Lexeme))
+                return true;
+        }
+
+        if (tok.Type == TokenType.Identifier && tok.Lexeme == "vector")
+            return true;
+
+        return false;
     }
 
-    /// <summary>
-    /// Продолжение объявления переменной, если тип и имя уже считаны.
-    /// TYPE name [= Expr] ;
-    /// </summary>
+    private void SkipCppTemplateArguments()
+    {
+        if (!Is(TokenType.Operator, "<"))
+            return;
+
+        int depth = 0;
+        while (_lookahead.Type != TokenType.EndOfFile)
+        {
+            if (Is(TokenType.Operator, "<"))
+            {
+                depth++;
+                Consume();
+            }
+            else if (Is(TokenType.Operator, ">"))
+            {
+                depth--;
+                Consume();
+                if (depth == 0)
+                    break;
+            }
+            else
+            {
+                Consume();
+            }
+        }
+    }
+
     private AstNode ParseCppVarDeclTail(Token typeTok, Token nameTok)
     {
         var idNode = new IdentifierNode(nameTok.Lexeme, nameTok.Line, nameTok.Column);
@@ -351,7 +386,6 @@ public sealed class SyntaxAnalyzer
             return new BinaryNode("decl", typeNode, assign);
         }
 
-        // без инициализации
         if (!Is(TokenType.Semicolon))
             Errors.Add((_lookahead.Line, _lookahead.Column,
                 "Ожидалась ';' после объявления."));
@@ -361,15 +395,10 @@ public sealed class SyntaxAnalyzer
         return new BinaryNode("decl", typeNode, idNode);
     }
 
-    /// <summary>
-    /// Объявление/определение функции: TYPE NAME ( ... ) { BODY } или TYPE NAME ( ... );
-    /// </summary>
     private AstNode ParseCppFunctionDeclaration(Token typeToken, Token nameToken)
     {
-        // уже на '('
         Consume(); // '('
         int depth = 1;
-        // Для простоты пропускаем параметры до соответствующей ')'
         while (_lookahead.Type != TokenType.EndOfFile && depth > 0)
         {
             if (_lookahead.Type == TokenType.LParen) depth++;
@@ -385,7 +414,7 @@ public sealed class SyntaxAnalyzer
             return new LiteralNode("error", nameToken.Lexeme, nameToken.Line, nameToken.Column);
         }
 
-        Consume(); // ')'
+        Consume();
 
         var typeNode = new IdentifierNode(typeToken.Lexeme, typeToken.Line, typeToken.Column);
         var nameNode = new IdentifierNode(nameToken.Lexeme, nameToken.Line, nameToken.Column);
@@ -399,7 +428,7 @@ public sealed class SyntaxAnalyzer
 
         if (Is(TokenType.Semicolon))
         {
-            Consume(); // прототип
+            Consume();
             return new BinaryNode("func-proto", typeNode, nameNode);
         }
 
@@ -409,18 +438,15 @@ public sealed class SyntaxAnalyzer
         return new LiteralNode("error", nameToken.Lexeme, nameToken.Line, nameToken.Column);
     }
 
-    /// <summary>
-    /// Локальное объявление: TYPE name [= Expr] ;
-    /// </summary>
     private AstNode? ParseCppVarDeclaration()
     {
-        var typeTok = Consume(); // уже знаем, что это тип
+        var typeTok = Consume();
+
+        SkipCppTemplateArguments();
 
         if (_lookahead.Type != TokenType.Identifier)
         {
-            Errors.Add((_lookahead.Line, _lookahead.Column,
-                $"Ожидался идентификатор после типа '{typeTok.Lexeme}'."));
-            SkipToSemicolon();
+            // нет идентификатора - просто выходим без ошибки
             return null;
         }
 
@@ -432,7 +458,6 @@ public sealed class SyntaxAnalyzer
 
     private AstNode? ParseCppStatement()
     {
-        // локальное объявление
         if (IsCppType(_lookahead))
             return ParseCppVarDeclaration();
 
@@ -489,7 +514,6 @@ public sealed class SyntaxAnalyzer
             return new UnaryNode("return", expr);
         }
 
-        // обычное выражение
         var e = ParseCppExpr();
 
         if (!Is(TokenType.Semicolon))
@@ -509,7 +533,7 @@ public sealed class SyntaxAnalyzer
 
     private AstNode ParseCppIfStatement()
     {
-        Consume(); // if
+        Consume();
 
         if (!Is(TokenType.LParen))
             Errors.Add((_lookahead.Line, _lookahead.Column, "Ожидалась '(' после if."));
@@ -540,7 +564,7 @@ public sealed class SyntaxAnalyzer
 
     private AstNode ParseCppWhileStatement()
     {
-        Consume(); // while
+        Consume();
 
         if (!Is(TokenType.LParen))
             Errors.Add((_lookahead.Line, _lookahead.Column, "Ожидалась '(' после while."));
@@ -560,7 +584,7 @@ public sealed class SyntaxAnalyzer
 
     private AstNode ParseCppDoWhileStatement()
     {
-        Consume(); // do
+        Consume();
         var body = ParseCppStatementOrBlock();
 
         if (!Is(TokenType.Keyword, "while"))
@@ -594,7 +618,7 @@ public sealed class SyntaxAnalyzer
 
     private AstNode ParseCppForStatement()
     {
-        Consume(); // for
+        Consume();
 
         if (!Is(TokenType.LParen))
             Errors.Add((_lookahead.Line, _lookahead.Column,
@@ -602,7 +626,6 @@ public sealed class SyntaxAnalyzer
         else
             Consume();
 
-        // --------- init ----------
         AstNode init;
         if (Is(TokenType.Semicolon))
         {
@@ -625,7 +648,6 @@ public sealed class SyntaxAnalyzer
             init = e;
         }
 
-        // --------- condition ----------
         AstNode cond;
         if (Is(TokenType.Semicolon))
         {
@@ -642,7 +664,6 @@ public sealed class SyntaxAnalyzer
                 Consume();
         }
 
-        // --------- increment ----------
         AstNode incr;
         if (Is(TokenType.RParen))
         {
@@ -674,7 +695,7 @@ public sealed class SyntaxAnalyzer
         if (!Is(TokenType.LBrace))
             return new LiteralNode("error", string.Empty, _lookahead.Line, _lookahead.Column);
 
-        Consume(); // '{'
+        Consume();
         var stmts = new List<AstNode>();
 
         while (_lookahead.Type != TokenType.RBrace &&
@@ -855,7 +876,33 @@ public sealed class SyntaxAnalyzer
                     Consume();
                 expr = new BinaryNode("[]", expr, index);
             }
-            else if (_lookahead.Type == TokenType.LParen && expr is IdentifierNode)
+            else if (_lookahead.Type == TokenType.Dot)
+            {
+                Consume();
+                if (_lookahead.Type != TokenType.Identifier)
+                {
+                    Errors.Add((_lookahead.Line, _lookahead.Column,
+                        "Ожидался идентификатор после '.'."));
+                    break;
+                }
+                var idTok = Consume();
+                var member = new IdentifierNode(idTok.Lexeme, idTok.Line, idTok.Column);
+                expr = new BinaryNode(".", expr, member);
+            }
+            else if (_lookahead.Type == TokenType.Arrow)
+            {
+                Consume();
+                if (_lookahead.Type != TokenType.Identifier)
+                {
+                    Errors.Add((_lookahead.Line, _lookahead.Column,
+                        "Ожидался идентификатор после '->'."));
+                    break;
+                }
+                var idTok = Consume();
+                var member = new IdentifierNode(idTok.Lexeme, idTok.Line, idTok.Column);
+                expr = new BinaryNode("->", expr, member);
+            }
+            else if (_lookahead.Type == TokenType.LParen)
             {
                 Consume();
                 var args = new List<AstNode>();
@@ -871,7 +918,7 @@ public sealed class SyntaxAnalyzer
 
                 if (!Is(TokenType.RParen))
                     Errors.Add((_lookahead.Line, _lookahead.Column,
-                        "Ожидалась ')' в вызове функции."));
+                        "Ожидалась ')' в списке аргументов."));
                 else
                     Consume();
 
@@ -944,10 +991,6 @@ public sealed class SyntaxAnalyzer
             $"Неожиданный токен: '{err.Lexeme}'"));
         return new LiteralNode("error", err.Lexeme, err.Line, err.Column);
     }
-
-    // =====================================================================
-    // ВОССТАНОВЛЕНИЕ ПОСЛЕ ОШИБОК
-    // =====================================================================
 
     private void SkipToSemicolon()
     {
