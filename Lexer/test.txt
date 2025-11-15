@@ -1,0 +1,1 @@
+x := 'T' or y and not 'F'; z := a xor b;

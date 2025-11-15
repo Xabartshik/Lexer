@@ -1,40 +1,40 @@
 %option noyywrap yylineno
 
 %{
-    #include <stdio.h>
-    int ch; /* column */
+  #include "parser.tab.h"
+
+  int ch; /* column */
+
+  /* Фабрики из parser.y */
+  struct Node *make_ident(const char *name);
+  struct Node *make_char(const char *lexeme);
 %}
 
 /* Macros */
-digit      [0-9]
-letter     [a-zA-Z_]
-ident      {letter}[a-zA-Z0-9_]*
-ws         [ \t\r\n]+
-delim      [();]
-assign     ":="
-kw         or|xor|and|not
-tfchar     \'[TF]\'
+
+digit  [0-9]
+letter [a-zA-Z_]
+ident  {letter}[a-zA-Z0-9_]*
+ws     [ \t\r\n]+
 
 %%
 
-{kw}        { printf("KEYWORD (%d,%d): %s\n", yylineno, ch, yytext); ch += yyleng; }
-{assign}    { printf("ASSIGN  (%d,%d): %s\n", yylineno, ch, yytext); ch += yyleng; }
-{delim}     { printf("DELIM   (%d,%d): %s\n", yylineno, ch, yytext); ch += yyleng; }
-{tfchar}    { printf("CHAR    (%d,%d): %s\n", yylineno, ch, yytext); ch += yyleng; }
-{ident}     { printf("IDENT   (%d,%d): %s\n", yylineno, ch, yytext); ch += yyleng; }
-{ws}        { ch += yyleng; /* skip */ }
-.           { printf("UNKNOWN (%d,%d): %s\n", yylineno, ch, yytext); ch += yyleng; }
+"or"      { ch += yyleng; return KW_OR;  }
+"xor"     { ch += yyleng; return KW_XOR; }
+"and"     { ch += yyleng; return KW_AND; }
+"not"     { ch += yyleng; return KW_NOT; }
+":="      { ch += yyleng; return ASSIGN; }
+"("       { ch += yyleng; return LPAREN; }
+")"       { ch += yyleng; return RPAREN; }
+";"       { ch += yyleng; return SEMICOLON; }
+"'T'"     { ch += yyleng; yylval.node = make_char(yytext); return CHAR_T; }
+"'F'"     { ch += yyleng; yylval.node = make_char(yytext); return CHAR_F; }
+{ident}   { ch += yyleng; yylval.node = make_ident(yytext); return IDENT; }
+{ws}      { ch += yyleng; /* skip */ }
+
+.         {
+            fprintf(stderr, "UNKNOWN (%d,%d): %s\n", yylineno, ch, yytext);
+            ch += yyleng;
+          }
 
 %%
-
-int main(int argc, char** argv)
-{
-    if (argc < 2) { printf("Нужен файл.\n"); return -1; }
-    yyin = fopen(argv[1], "r");
-    if (!yyin) { printf("Не смог открыть файл %s.\n", argv[1]); return -1; }
-    ch = 1;
-    yylineno = 1;
-    yylex();
-    fclose(yyin);
-    return 0;
-}

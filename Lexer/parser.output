@@ -1,0 +1,332 @@
+Grammar
+
+    0 $accept: program $end
+
+    1 program: statement_list
+
+    2 statement_list: statement
+    3               | statement_list statement
+
+    4 statement: IDENT ASSIGN expr SEMICOLON
+
+    5 expr: term
+    6     | expr KW_OR term
+    7     | expr KW_XOR term
+
+    8 term: factor
+    9     | term KW_AND factor
+
+   10 factor: KW_NOT factor
+   11       | primary
+
+   12 primary: CHAR_T
+   13        | CHAR_F
+   14        | IDENT
+   15        | LPAREN expr RPAREN
+
+
+Terminals, with rules where they appear
+
+    $end (0) 0
+    error (256)
+    IDENT <node> (258) 4 14
+    CHAR_T <node> (259) 12
+    CHAR_F <node> (260) 13
+    KW_OR (261) 6
+    KW_XOR (262) 7
+    KW_AND (263) 9
+    KW_NOT (264) 10
+    ASSIGN (265) 4
+    LPAREN (266) 15
+    RPAREN (267) 15
+    SEMICOLON (268) 4
+
+
+Nonterminals, with rules where they appear
+
+    $accept (14)
+        on left: 0
+    program <node> (15)
+        on left: 1
+        on right: 0
+    statement_list <node> (16)
+        on left: 2 3
+        on right: 1 3
+    statement <node> (17)
+        on left: 4
+        on right: 2 3
+    expr <node> (18)
+        on left: 5 6 7
+        on right: 4 6 7 15
+    term <node> (19)
+        on left: 8 9
+        on right: 5 6 7 9
+    factor <node> (20)
+        on left: 10 11
+        on right: 8 9 10
+    primary <node> (21)
+        on left: 12 13 14 15
+        on right: 11
+
+
+State 0
+
+    0 $accept: . program $end
+
+    IDENT  shift, and go to state 1
+
+    program         go to state 2
+    statement_list  go to state 3
+    statement       go to state 4
+
+
+State 1
+
+    4 statement: IDENT . ASSIGN expr SEMICOLON
+
+    ASSIGN  shift, and go to state 5
+
+
+State 2
+
+    0 $accept: program . $end
+
+    $end  shift, and go to state 6
+
+
+State 3
+
+    1 program: statement_list .
+    3 statement_list: statement_list . statement
+
+    IDENT  shift, and go to state 1
+
+    $default  reduce using rule 1 (program)
+
+    statement  go to state 7
+
+
+State 4
+
+    2 statement_list: statement .
+
+    $default  reduce using rule 2 (statement_list)
+
+
+State 5
+
+    4 statement: IDENT ASSIGN . expr SEMICOLON
+
+    IDENT   shift, and go to state 8
+    CHAR_T  shift, and go to state 9
+    CHAR_F  shift, and go to state 10
+    KW_NOT  shift, and go to state 11
+    LPAREN  shift, and go to state 12
+
+    expr     go to state 13
+    term     go to state 14
+    factor   go to state 15
+    primary  go to state 16
+
+
+State 6
+
+    0 $accept: program $end .
+
+    $default  accept
+
+
+State 7
+
+    3 statement_list: statement_list statement .
+
+    $default  reduce using rule 3 (statement_list)
+
+
+State 8
+
+   14 primary: IDENT .
+
+    $default  reduce using rule 14 (primary)
+
+
+State 9
+
+   12 primary: CHAR_T .
+
+    $default  reduce using rule 12 (primary)
+
+
+State 10
+
+   13 primary: CHAR_F .
+
+    $default  reduce using rule 13 (primary)
+
+
+State 11
+
+   10 factor: KW_NOT . factor
+
+    IDENT   shift, and go to state 8
+    CHAR_T  shift, and go to state 9
+    CHAR_F  shift, and go to state 10
+    KW_NOT  shift, and go to state 11
+    LPAREN  shift, and go to state 12
+
+    factor   go to state 17
+    primary  go to state 16
+
+
+State 12
+
+   15 primary: LPAREN . expr RPAREN
+
+    IDENT   shift, and go to state 8
+    CHAR_T  shift, and go to state 9
+    CHAR_F  shift, and go to state 10
+    KW_NOT  shift, and go to state 11
+    LPAREN  shift, and go to state 12
+
+    expr     go to state 18
+    term     go to state 14
+    factor   go to state 15
+    primary  go to state 16
+
+
+State 13
+
+    4 statement: IDENT ASSIGN expr . SEMICOLON
+    6 expr: expr . KW_OR term
+    7     | expr . KW_XOR term
+
+    KW_OR      shift, and go to state 19
+    KW_XOR     shift, and go to state 20
+    SEMICOLON  shift, and go to state 21
+
+
+State 14
+
+    5 expr: term .
+    9 term: term . KW_AND factor
+
+    KW_AND  shift, and go to state 22
+
+    $default  reduce using rule 5 (expr)
+
+
+State 15
+
+    8 term: factor .
+
+    $default  reduce using rule 8 (term)
+
+
+State 16
+
+   11 factor: primary .
+
+    $default  reduce using rule 11 (factor)
+
+
+State 17
+
+   10 factor: KW_NOT factor .
+
+    $default  reduce using rule 10 (factor)
+
+
+State 18
+
+    6 expr: expr . KW_OR term
+    7     | expr . KW_XOR term
+   15 primary: LPAREN expr . RPAREN
+
+    KW_OR   shift, and go to state 19
+    KW_XOR  shift, and go to state 20
+    RPAREN  shift, and go to state 23
+
+
+State 19
+
+    6 expr: expr KW_OR . term
+
+    IDENT   shift, and go to state 8
+    CHAR_T  shift, and go to state 9
+    CHAR_F  shift, and go to state 10
+    KW_NOT  shift, and go to state 11
+    LPAREN  shift, and go to state 12
+
+    term     go to state 24
+    factor   go to state 15
+    primary  go to state 16
+
+
+State 20
+
+    7 expr: expr KW_XOR . term
+
+    IDENT   shift, and go to state 8
+    CHAR_T  shift, and go to state 9
+    CHAR_F  shift, and go to state 10
+    KW_NOT  shift, and go to state 11
+    LPAREN  shift, and go to state 12
+
+    term     go to state 25
+    factor   go to state 15
+    primary  go to state 16
+
+
+State 21
+
+    4 statement: IDENT ASSIGN expr SEMICOLON .
+
+    $default  reduce using rule 4 (statement)
+
+
+State 22
+
+    9 term: term KW_AND . factor
+
+    IDENT   shift, and go to state 8
+    CHAR_T  shift, and go to state 9
+    CHAR_F  shift, and go to state 10
+    KW_NOT  shift, and go to state 11
+    LPAREN  shift, and go to state 12
+
+    factor   go to state 26
+    primary  go to state 16
+
+
+State 23
+
+   15 primary: LPAREN expr RPAREN .
+
+    $default  reduce using rule 15 (primary)
+
+
+State 24
+
+    6 expr: expr KW_OR term .
+    9 term: term . KW_AND factor
+
+    KW_AND  shift, and go to state 22
+
+    $default  reduce using rule 6 (expr)
+
+
+State 25
+
+    7 expr: expr KW_XOR term .
+    9 term: term . KW_AND factor
+
+    KW_AND  shift, and go to state 22
+
+    $default  reduce using rule 7 (expr)
+
+
+State 26
+
+    9 term: term KW_AND factor .
+
+    $default  reduce using rule 9 (term)
